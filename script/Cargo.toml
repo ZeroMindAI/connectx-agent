@@ -25,6 +25,7 @@ tracing = "0.1.40"
 hex = "0.4.3"
 alloy-sol-types = { workspace = true }
 game-lib = { path = "../lib" }
+game-utils = { path = "../utils" }
 turbo-sp1 = { path = "../turbo-sp1" }
 dotenv = "0.15.0"
 warp = "0.3"

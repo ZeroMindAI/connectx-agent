@@ -13,6 +13,7 @@
 use alloy_sol_types::SolType;
 use clap::Parser;
 use game_lib::state::GamePublicState;
+use game_utils::print::print_public_state;
 use rand::thread_rng;
 use sp1_sdk::{include_elf, ProverClient, SP1Stdin};
 use std::num::ParseIntError;
@@ -94,7 +95,7 @@ fn main() {
     let mut stdin = SP1Stdin::new();
     stdin.write(&server_metadata);
     stdin.write(&player_metadatas);
-    let repeated_actions = args.actions.0.repeat(100);
+    let repeated_actions = args.actions.0.repeat(2);
     stdin.write(&repeated_actions);
 
     //println!("actions: {:?}", repeated_actions);
@@ -106,10 +107,7 @@ fn main() {
 
         // Read the output.
         let decoded: GamePublicState = GamePublicState::abi_decode(output.as_slice()).unwrap();
-        let GamePublicState { board } = decoded;
-        println!("board: {:?}", board);
-        // println!("num: {:?}", num);
-        // println!("hash: {:?}", hash);
+        print_public_state(&decoded);
 
         // Record the number of cycles executed.
         println!("Number of cycles: {}", report.total_instruction_count());
@@ -143,10 +141,7 @@ fn main() {
         // Read the output.
         let decoded: GamePublicState =
             GamePublicState::abi_decode(proof.public_values.as_slice()).unwrap();
-        let GamePublicState { board } = decoded;
-        println!("board: {:?}", board);
-        // println!("num: {:?}", num);
-        // println!("hash: {:?}", hash);
+        print_public_state(&decoded);
 
         println!(
             "Total proving time: {:?}",

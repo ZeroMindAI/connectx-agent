@@ -1991,6 +1991,7 @@ dependencies = [
  "clap",
  "dotenv",
  "game-lib",
+ "game-utils",
  "hex",
  "rand 0.8.5",
  "serde",
@@ -2002,6 +2003,13 @@ dependencies = [
  "tracing",
  "turbo-sp1",
  "warp",
+]
+
+[[package]]
+name = "game-utils"
+version = "0.1.0"
+dependencies = [
+ "game-lib",
 ]
 
 [[package]]
