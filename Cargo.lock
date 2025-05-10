@@ -29,6 +29,24 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "512761e0bb2578dd7380c6baaa0f4ce03e84f95e960231d1dec8bf4d7d6e2627"
 
 [[package]]
+name = "agent-minimax"
+version = "0.1.0"
+dependencies = [
+ "game-lib",
+ "sp1-zkvm",
+ "turbo-program",
+]
+
+[[package]]
+name = "agent-random"
+version = "0.1.0"
+dependencies = [
+ "game-lib",
+ "sp1-zkvm",
+ "turbo-program",
+]
+
+[[package]]
 name = "ahash"
 version = "0.8.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1986,6 +2004,8 @@ dependencies = [
 name = "game-script"
 version = "0.1.0"
 dependencies = [
+ "agent-minimax",
+ "agent-random",
  "alloy-sol-types 1.0.0",
  "bls12_381 0.8.0",
  "clap",

@@ -7,6 +7,7 @@ pub mod session;
 pub mod session_manager;
 pub mod session_simple;
 pub mod warp;
+pub mod zeromind;
 
 pub fn add(left: u64, right: u64) -> u64 {
     left + right

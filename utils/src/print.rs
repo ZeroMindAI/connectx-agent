@@ -1,6 +1,6 @@
 use game_lib::state::GamePublicState;
 
-pub fn print_board(board: &[[u32; 7]; 6]) {
+pub fn print_board(board: &[[u8; 7]; 6]) {
     for row in board {
         for col in row {
             if *col == 0 {

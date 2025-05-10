@@ -1,0 +1,9 @@
+[package]
+name = "agent-minimax"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+sp1-zkvm = { workspace = true }
+game-lib = { path = "../lib" }
+turbo-program = { path = "../turbo-program" }

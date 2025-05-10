@@ -1,12 +1,13 @@
 use alloy_sol_types::sol;
 use serde::{Deserialize, Serialize};
+use turbo_program::traits::HasTerminalState;
 
 sol! {
     #[derive(Serialize, Deserialize, Debug)]
     struct GamePublicState {
-        uint32[7][6] board;  // 7 columns, 6 rows for Connect 4
-        uint32 current_player;  // 1 for player 1, 2 for player 2
-        uint32 winner;  // 0 for no winner, 1 for player 1, 2 for player 2
+        uint8[7][6] board;  // 7 columns, 6 rows for Connect 4
+        uint8 current_player;  // 1 for player 1, 2 for player 2
+        uint8 winner;  // 0 for no winner, 1 for player 1, 2 for player 2
         uint8[] moves;
     }
 }
@@ -24,5 +25,11 @@ impl Default for GamePublicState {
             winner: 0,
             moves: vec![],
         }
+    }
+}
+
+impl HasTerminalState for GamePublicState {
+    fn is_terminal(&self) -> bool {
+        self.winner != 0
     }
 }

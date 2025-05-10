@@ -4,9 +4,9 @@ pragma solidity ^0.8.20;
 import {ISP1Verifier} from "@sp1-contracts/ISP1Verifier.sol";
 
 struct GamePublicState {
-    uint32[7][6] board; // 7 columns, 6 rows for Connect 4
-    uint32 currentPlayer; // 1 for player 1, 2 for player 2
-    uint32 winner; // 0 for no winner, 1 for player 1, 2 for player 2
+    uint8[7][6] board; // 7 columns, 6 rows for Connect 4
+    uint8 currentPlayer; // 1 for player 1, 2 for player 2
+    uint8 winner; // 0 for no winner, 1 for player 1, 2 for player 2
     uint8[] moves;
 }
 

@@ -4,7 +4,7 @@ use turbo_program::context::TurboActionContext;
 use crate::{action::GameAction, state::GamePrivateState, state::GamePublicState};
 
 /// Check if there's a winner in the current board state
-fn check_winner(board: &[[u32; 7]; 6], row: usize, col: usize, player: u32) -> bool {
+fn check_winner(board: &[[u8; 7]; 6], row: usize, col: usize, player: u8) -> bool {
     // Check horizontal
     let mut count = 0;
     for c in 0..7 {
@@ -77,7 +77,7 @@ fn check_winner(board: &[[u32; 7]; 6], row: usize, col: usize, player: u32) -> b
 }
 
 /// Check if the board is full
-fn is_board_full(board: &[[u32; 7]; 6]) -> bool {
+fn is_board_full(board: &[[u8; 7]; 6]) -> bool {
     for col in 0..7 {
         if board[0][col] == 0 {
             return false;
@@ -97,6 +97,11 @@ pub fn reducer(
             #[cfg(not(target_os = "zkvm"))]
             {
                 *context.client_response() = None;
+            }
+
+            // Skip if wrong player move
+            if public_state.current_player != context.player_index() as u8 + 1 {
+                return;
             }
 
             // Skip if the game is already won
@@ -124,10 +129,10 @@ pub fn reducer(
             public_state.board[row][*column as usize] = public_state.current_player;
             private_state.moves += 1;
 
-            println!(
-                "Current player: {}, Colum: {}",
-                public_state.current_player, *column
-            );
+            // println!(
+            //     "Current player: {}, Colum: {}",
+            //     public_state.current_player, *column
+            // );
 
             // Check for winner
             if check_winner(

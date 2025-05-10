@@ -54,7 +54,7 @@ struct Args {
     // #[arg(long, default_value = "0,3,1,0,0, 0,3,1,0,1, 0,2,0,2, 0,2,0,1")]
     #[arg(
         long,
-        default_value = "0,2, 0,1, 0,0, 0,2, 0,3, 0,1, 0,3, 0,0, 0,2, 0,1"
+        default_value = "0,2, 1,1, 0,0, 1,2, 0,3, 1,1, 0,3, 1,0, 0,2, 1,1"
     )]
     actions: VecString,
 }
@@ -86,7 +86,7 @@ fn main() {
     let player_metadata: PlayerMetadata = PlayerMetadata {
         random_seed: bn254_export_affine_g1_memcpy(&player_random_seed),
     };
-    let player_metadatas = vec![player_metadata];
+    let player_metadatas = vec![player_metadata.clone(), player_metadata.clone()];
 
     // Setup the prover client.
     let client = ProverClient::from_env();
@@ -108,6 +108,7 @@ fn main() {
         // Read the output.
         let decoded: GamePublicState = GamePublicState::abi_decode(output.as_slice()).unwrap();
         print_public_state(&decoded);
+        println!("moves: {:?}", decoded.moves);
 
         // Record the number of cycles executed.
         println!("Number of cycles: {}", report.total_instruction_count());
@@ -142,6 +143,7 @@ fn main() {
         let decoded: GamePublicState =
             GamePublicState::abi_decode(proof.public_values.as_slice()).unwrap();
         print_public_state(&decoded);
+        println!("moves: {:?}", decoded.moves);
 
         println!(
             "Total proving time: {:?}",
