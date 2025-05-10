@@ -7,6 +7,7 @@ sol! {
         uint32[7][6] board;  // 7 columns, 6 rows for Connect 4
         uint32 current_player;  // 1 for player 1, 2 for player 2
         uint32 winner;  // 0 for no winner, 1 for player 1, 2 for player 2
+        uint8[] moves;
     }
 }
 
@@ -21,6 +22,7 @@ impl Default for GamePublicState {
             board: [[0; 7]; 6],
             current_player: 1,
             winner: 0,
+            moves: vec![],
         }
     }
 }

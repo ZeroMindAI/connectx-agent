@@ -149,6 +149,8 @@ pub fn reducer(
                 };
             }
 
+            public_state.moves.push(*column);
+
             #[cfg(not(target_os = "zkvm"))]
             {
                 *context.client_response() = Some(json!({
