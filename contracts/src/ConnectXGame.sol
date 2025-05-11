@@ -2,6 +2,7 @@
 pragma solidity ^0.8.20;
 
 import {ISP1Verifier} from "@sp1-contracts/ISP1Verifier.sol";
+import {FixedPointMathLib} from "@solmate/utils/FixedPointMathLib.sol";
 
 struct GamePublicState {
     uint8[7][6] board; // 7 columns, 6 rows for Connect 4
@@ -14,7 +15,7 @@ struct Agent {
     bytes32 vkey;
     address owner;
     string name;
-    uint256 elo; // ELO rating score
+    int256 elo; // ELO rating score
     uint256 gamesPlayed;
 }
 
@@ -22,6 +23,8 @@ struct Agent {
 /// @author ZeroMind
 /// @notice This contract implements an AI game arena for the ConnectX game.
 contract ConnectXGame {
+    using FixedPointMathLib for uint256;
+
     /// @notice The address of the SP1 verifier contract.
     /// @dev This can either be a specific SP1Verifier for a specific version, or the
     ///      SP1VerifierGateway which can be used to verify proofs for any version of SP1.
@@ -36,10 +39,13 @@ contract ConnectXGame {
     mapping(bytes32 => Agent) public agentRegistry;
 
     /// @notice K-factor for ELO calculation
-    uint32 public constant K_FACTOR = 32;
+    uint256 public constant K_FACTOR = 32;
 
     /// @notice Default starting ELO
-    uint32 public constant DEFAULT_ELO = 1200;
+    uint256 public constant DEFAULT_ELO = 1200;
+
+    /// @notice Scale factor for fixed point math (1e18)
+    uint256 private constant SCALE = 1e18;
 
     event AgentRegistered(
         bytes32 indexed vkey,
@@ -62,28 +68,20 @@ contract ConnectXGame {
 
     /// @notice Register an agent
     /// @param _vkey The vkey of the agent
-    /// @param _gameVKey The vkey of the game
     /// @param _name The name of the agent
-    function registerAgent(
-        bytes32 _vkey,
-        bytes32 _gameVKey,
-        string memory _name
-    ) public {
+    function registerAgent(bytes32 _vkey, string memory _name) public {
         require(_vkey != bytes32(0), "Vkey not set");
-        require(_gameVKey != bytes32(0), "Game vkey not set");
-        require(
-            agentRegistry[_vkey].vkey == bytes32(0),
-            "Agent already registered"
-        );
 
-        agentRegistry[_vkey] = Agent({
-            vkey: _vkey,
-            owner: msg.sender,
-            name: _name,
-            elo: DEFAULT_ELO,
-            gamesPlayed: 0
-        });
-        emit AgentRegistered(_vkey, msg.sender, _name);
+        if (agentRegistry[_vkey].vkey == bytes32(0)) {
+            agentRegistry[_vkey] = Agent({
+                vkey: _vkey,
+                owner: msg.sender,
+                name: _name,
+                elo: int256(DEFAULT_ELO),
+                gamesPlayed: 0
+            });
+            emit AgentRegistered(_vkey, msg.sender, _name);
+        }
     }
 
     /// @notice Get an agent
@@ -110,34 +108,52 @@ contract ConnectXGame {
         Agent storage agent1 = agentRegistry[_agent1];
         Agent storage agent2 = agentRegistry[_agent2];
 
-        // Calculate expected scores
-        uint256 expectedScore1 = 1000 /
-            (1 + 10 ** ((agent2.elo - agent1.elo) / 400));
-        uint256 expectedScore2 = 1000 /
-            (1 + 10 ** ((agent1.elo - agent2.elo) / 400));
+        // Convert ELO scores to positive numbers for fixed point math
+        uint256 elo1 = uint256(agent1.elo >= 0 ? agent1.elo : 0);
+        uint256 elo2 = uint256(agent2.elo >= 0 ? agent2.elo : 0);
 
-        // Calculate actual scores (1000 = 1.0, 500 = 0.5, 0 = 0.0)
-        uint32 actualScore1;
-        uint32 actualScore2;
+        // Calculate expected scores using fixed point math
+        uint256 eloDiff1 = (elo2 > elo1) ? elo2 - elo1 : elo1 - elo2;
+        uint256 expectedScore1 = SCALE.divWadDown(
+            SCALE + uint256(10).rpow((eloDiff1 * SCALE) / 400, SCALE)
+        );
+        uint256 expectedScore2 = SCALE - expectedScore1;
+
+        // Calculate actual scores (SCALE = 1.0, SCALE/2 = 0.5, 0 = 0.0)
+        uint256 actualScore1;
+        uint256 actualScore2;
         if (_winner == 1) {
-            actualScore1 = 1000;
+            actualScore1 = SCALE;
             actualScore2 = 0;
         } else if (_winner == 2) {
             actualScore1 = 0;
-            actualScore2 = 1000;
+            actualScore2 = SCALE;
         } else {
-            actualScore1 = 500;
-            actualScore2 = 500;
+            actualScore1 = SCALE / 2;
+            actualScore2 = SCALE / 2;
         }
 
         // Update ELO ratings
-        agent1.elo += (K_FACTOR * (actualScore1 - expectedScore1)) / 1000;
-        agent2.elo += (K_FACTOR * (actualScore2 - expectedScore2)) / 1000;
+        int256 delta1 = int256(
+            (K_FACTOR * (actualScore1 - expectedScore1)) / SCALE
+        );
+        int256 delta2 = int256(
+            (K_FACTOR * (actualScore2 - expectedScore2)) / SCALE
+        );
+
+        agent1.elo += delta1;
+        agent2.elo += delta2;
 
         agent1.gamesPlayed++;
         agent2.gamesPlayed++;
 
-        emit GameResult(_agent1, _agent2, _winner, agent1.elo, agent2.elo);
+        emit GameResult(
+            _agent1,
+            _agent2,
+            _winner,
+            uint256(agent1.elo),
+            uint256(agent2.elo)
+        );
     }
 
     function playGame(

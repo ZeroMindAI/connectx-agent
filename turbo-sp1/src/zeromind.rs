@@ -4,9 +4,18 @@ use std::{
 };
 
 use alloy_sol_types::SolValue;
+use ethers::{
+    abi::Abi,
+    contract::Contract,
+    middleware::SignerMiddleware,
+    providers::{Http, Provider},
+    signers::{LocalWallet, Signer},
+    types::{Address, Bytes},
+};
 use lazy_static::lazy_static;
 use rand::thread_rng;
-use sp1_sdk::{EnvProver, SP1ProvingKey, SP1Stdin, SP1VerifyingKey};
+use serde_json::from_str;
+use sp1_sdk::{EnvProver, HashableKey, SP1ProvingKey, SP1Stdin, SP1VerifyingKey};
 use substrate_bn::*;
 use turbo_program::{
     context::TurboActionContext,
@@ -16,6 +25,9 @@ use turbo_program::{
     traits::{HasActions, HasTerminalState, TurboActionSerialization},
     zeromind::ZeroMindAgent,
 };
+
+// Load ABI from file
+const CONNECTX_GAME_ABI: &str = include_str!("connectx_abi.json");
 
 lazy_static! {
     static ref SETUP_CACHE: Mutex<HashMap<Vec<u8>, Arc<(SP1ProvingKey, SP1VerifyingKey)>>> =
@@ -53,12 +65,52 @@ fn setup_circuit(
     }
 }
 
-fn zeromind_submit_elf(
+fn game_contract() -> Result<Contract<SignerMiddleware<Provider<Http>, LocalWallet>>, String> {
+    // Get private key from environment
+    let private_key =
+        std::env::var("NETWORK_PRIVATE_KEY").map_err(|_| "NETWORK_PRIVATE_KEY not set")?;
+    let wallet: LocalWallet = private_key.parse().map_err(|_| "Invalid private key")?;
+    let wallet = wallet.with_chain_id(1u64); // Set appropriate chain ID
+
+    // Setup provider and contract
+    let rpc_url = std::env::var("RPC_URL").unwrap_or("https://sepolia.base.org".to_string());
+    let provider =
+        Provider::<Http>::try_from(rpc_url.as_str()).map_err(|_| "Failed to create provider")?;
+    let client = SignerMiddleware::new(provider, wallet);
+    let client = Arc::new(client);
+
+    // Get contract address from environment
+    let contract_address = std::env::var("CONNECTX_GAME_ADDRESS")
+        .unwrap_or("0xb8c7e60807a569a1E1381D1784994cC921389e23".to_string());
+    let contract_address = contract_address
+        .parse::<Address>()
+        .map_err(|_| "Invalid contract address")?;
+
+    // Create contract instance
+    let abi: Abi =
+        from_str(CONNECTX_GAME_ABI).map_err(|e| format!("Failed to parse ABI: {}", e))?;
+    let contract = Contract::new(contract_address, abi, client.clone());
+
+    Ok(contract)
+}
+
+async fn zeromind_submit_elf(
     client: Arc<EnvProver>,
     elf: &[u8],
     name: &str,
 ) -> Result<Arc<(SP1ProvingKey, SP1VerifyingKey)>, String> {
     let keys = setup_circuit(client, elf).map_err(|e| e.to_string())?;
+
+    let contract = game_contract()?;
+
+    // Register agent on chain
+    contract
+        .method::<_, ()>("registerAgent", (keys.1.bytes32(), name.to_string()))
+        .map_err(|e| format!("Failed to create contract call: {}", e))?
+        .send()
+        .await
+        .map_err(|e| format!("Failed to register agent: {}", e))?;
+
     Ok(keys)
 }
 
@@ -166,7 +218,7 @@ where
     )
 }
 
-pub fn zeromind_submit_agent<PublicState, PrivateState, GameAction>(
+pub async fn zeromind_submit_agent<PublicState, PrivateState, GameAction>(
     client: Arc<EnvProver>,
     reducer: TurboReducer<PublicState, PrivateState, GameAction>,
     game_elf: Arc<Vec<u8>>,
@@ -182,9 +234,17 @@ where
     PrivateState: Default,
     GameAction: TurboActionSerialization,
 {
-    let keysGame = setup_circuit(client.clone(), game_elf.as_ref())?;
-    let keys1 = zeromind_submit_elf(client.clone(), agent1.elf.as_ref(), &agent1.name)?;
-    let keys2 = zeromind_submit_elf(client.clone(), agent2.elf.as_ref(), &agent2.name)?;
+    let keys_game = setup_circuit(client.clone(), game_elf.as_ref())?;
+    let keys1 = zeromind_submit_elf(client.clone(), agent1.elf.as_ref(), &agent1.name).await?;
+    let keys2 = zeromind_submit_elf(client.clone(), agent2.elf.as_ref(), &agent2.name).await?;
+
+    println!("Game vkey: {}", keys_game.1.bytes32().to_string());
+    println!("Agent 1 vkey: {}", keys1.1.bytes32().to_string());
+    println!("Agent 2 vkey: {}", keys2.1.bytes32().to_string());
+
+    println!();
+    println!("================================================");
+    println!();
 
     let (server_metadata, player_metadata_0, player_metadata_1) = make_metadata();
 
@@ -291,8 +351,8 @@ where
     }
 
     // Generate game proof
-    let gameProof = client
-        .prove(&keysGame.0, &stdin_game)
+    let game_proof = client
+        .prove(&keys_game.0, &stdin_game)
         .groth16()
         .run()
         .map_err(|_| "Failed to generate proof")?;
@@ -300,7 +360,7 @@ where
     println!("Game proof generated");
 
     // Generate agent 1 proof
-    let agent1Proof = client
+    let agent1_proof = client
         .prove(&keys1.0, &stdin0)
         .groth16()
         .run()
@@ -309,13 +369,56 @@ where
     println!("Agent 1 proof generated");
 
     // Generate agent 2 proof
-    let agent2Proof = client
+    let agent2_proof = client
         .prove(&keys2.0, &stdin1)
         .groth16()
         .run()
         .map_err(|_| "Failed to generate proof")?;
 
     println!("Agent 2 proof generated");
+
+    // Get private key from environment
+    let private_key =
+        std::env::var("NETWORK_PRIVATE_KEY").map_err(|_| "NETWORK_PRIVATE_KEY not set")?;
+    let wallet: LocalWallet = private_key.parse().map_err(|_| "Invalid private key")?;
+    let wallet = wallet.with_chain_id(1u64); // Set appropriate chain ID
+
+    // Setup provider and contract
+    let rpc_url = std::env::var("RPC_URL").map_err(|_| "RPC_URL not set")?;
+    let provider =
+        Provider::<Http>::try_from(rpc_url.as_str()).map_err(|_| "Failed to create provider")?;
+    let client = SignerMiddleware::new(provider, wallet);
+    let client = Arc::new(client);
+
+    // Get contract address from environment
+    let contract_address =
+        std::env::var("CONNECTX_GAME_ADDRESS").map_err(|_| "CONNECTX_GAME_ADDRESS not set")?;
+    let contract_address = contract_address
+        .parse::<Address>()
+        .map_err(|_| "Invalid contract address")?;
+
+    // Create contract instance
+    let abi: Abi =
+        from_str(CONNECTX_GAME_ABI).map_err(|e| format!("Failed to parse ABI: {}", e))?;
+    let contract = Contract::new(contract_address, abi, client.clone());
+
+    // Play game on chain
+    contract
+        .method::<_, ()>(
+            "playGame",
+            (
+                keys1.1.bytes32(),
+                keys2.1.bytes32(),
+                Bytes::from(agent1_proof.bytes()),
+                Bytes::from(agent2_proof.bytes()),
+                Bytes::from(game_proof.bytes()),
+                Bytes::from(PublicState::abi_encode(&result)),
+            ),
+        )
+        .map_err(|e| format!("Failed to create contract call: {}", e))?
+        .send()
+        .await
+        .map_err(|e| format!("Failed to play game: {}", e))?;
 
     Ok(result)
 }
