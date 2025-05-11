@@ -6,3 +6,6 @@
 	path = contracts/lib/sp1-contracts
 	url = https://github.com/succinctlabs/sp1-contracts
 	tag = v3.0.0
+[submodule "contracts/lib/solmate"]
+	path = contracts/lib/solmate
+	url = https://github.com/transmissions11/solmate
