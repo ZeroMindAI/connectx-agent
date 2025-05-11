@@ -1,20 +1,19 @@
 use std::{
     collections::HashMap,
+    str::FromStr,
     sync::{Arc, Mutex},
 };
 
-use alloy_sol_types::SolValue;
-use ethers::{
-    abi::Abi,
-    contract::Contract,
-    middleware::SignerMiddleware,
-    providers::{Http, Provider},
-    signers::{LocalWallet, Signer},
-    types::{Address, Bytes},
+use alloy::{
+    // monolithic re-export of all the pieces
+    primitives::{Address, Bytes, FixedBytes},
+    providers::ProviderBuilder,
+    signers::local::PrivateKeySigner,
+    sol_types::sol,
 };
+use alloy_sol_types::SolValue;
 use lazy_static::lazy_static;
 use rand::thread_rng;
-use serde_json::from_str;
 use sp1_sdk::{EnvProver, HashableKey, SP1ProvingKey, SP1Stdin, SP1VerifyingKey};
 use substrate_bn::*;
 use turbo_program::{
@@ -27,12 +26,18 @@ use turbo_program::{
 };
 
 // Load ABI from file
-const CONNECTX_GAME_ABI: &str = include_str!("connectx_abi.json");
+sol!(
+    #[sol(rpc)]
+    ConnectXGame,
+    "src/connectx_abi.json"
+);
 
 lazy_static! {
     static ref SETUP_CACHE: Mutex<HashMap<Vec<u8>, Arc<(SP1ProvingKey, SP1VerifyingKey)>>> =
         Mutex::new(HashMap::new());
 }
+
+const CONNECTX_GAME_ADDRESS: &str = "0x52781fD1B028a0cc04C650E4053F8E0cc624628E";
 
 pub struct ZeromindAgentSubmission<PublicState> {
     agent: ZeroMindAgent<PublicState>,
@@ -65,35 +70,6 @@ fn setup_circuit(
     }
 }
 
-fn game_contract() -> Result<Contract<SignerMiddleware<Provider<Http>, LocalWallet>>, String> {
-    // Get private key from environment
-    let private_key =
-        std::env::var("NETWORK_PRIVATE_KEY").map_err(|_| "NETWORK_PRIVATE_KEY not set")?;
-    let wallet: LocalWallet = private_key.parse().map_err(|_| "Invalid private key")?;
-    let wallet = wallet.with_chain_id(1u64); // Set appropriate chain ID
-
-    // Setup provider and contract
-    let rpc_url = std::env::var("RPC_URL").unwrap_or("https://sepolia.base.org".to_string());
-    let provider =
-        Provider::<Http>::try_from(rpc_url.as_str()).map_err(|_| "Failed to create provider")?;
-    let client = SignerMiddleware::new(provider, wallet);
-    let client = Arc::new(client);
-
-    // Get contract address from environment
-    let contract_address = std::env::var("CONNECTX_GAME_ADDRESS")
-        .unwrap_or("0xb8c7e60807a569a1E1381D1784994cC921389e23".to_string());
-    let contract_address = contract_address
-        .parse::<Address>()
-        .map_err(|_| "Invalid contract address")?;
-
-    // Create contract instance
-    let abi: Abi =
-        from_str(CONNECTX_GAME_ABI).map_err(|e| format!("Failed to parse ABI: {}", e))?;
-    let contract = Contract::new(contract_address, abi, client.clone());
-
-    Ok(contract)
-}
-
 async fn zeromind_submit_elf(
     client: Arc<EnvProver>,
     elf: &[u8],
@@ -101,15 +77,30 @@ async fn zeromind_submit_elf(
 ) -> Result<Arc<(SP1ProvingKey, SP1VerifyingKey)>, String> {
     let keys = setup_circuit(client, elf).map_err(|e| e.to_string())?;
 
-    let contract = game_contract()?;
+    let private_key =
+        std::env::var("NETWORK_PRIVATE_KEY").map_err(|_| "NETWORK_PRIVATE_KEY not set")?;
+    let signer: PrivateKeySigner = private_key.parse().expect("invalid private key");
+
+    // Setup provider and contract
+    let rpc_url = std::env::var("RPC_URL").unwrap_or("https://sepolia.base.org".to_string());
+    let provider = ProviderBuilder::new()
+        .wallet(signer)
+        .connect_http(rpc_url.parse().map_err(|_e| "Failed to create provider")?);
+
+    let contract = ConnectXGame::new(Address::from_str(CONNECTX_GAME_ADDRESS).unwrap(), provider);
+
+    let call = contract.registerAgent(
+        FixedBytes::<32>::from_slice(&keys.1.bytes32_raw()),
+        name.to_string(),
+    );
 
     // Register agent on chain
-    contract
-        .method::<_, ()>("registerAgent", (keys.1.bytes32(), name.to_string()))
-        .map_err(|e| format!("Failed to create contract call: {}", e))?
-        .send()
+    call.send()
         .await
-        .map_err(|e| format!("Failed to register agent: {}", e))?;
+        .map_err(|e| format!("Failed to register agent: {}", e))?
+        .get_receipt()
+        .await
+        .map_err(|e| format!("Failed to get register agent receipt: {}", e))?;
 
     Ok(keys)
 }
@@ -359,7 +350,10 @@ where
 
     println!("Game proof generated");
 
-    // Generate agent 1 proof
+    // let agent1_proof = game_proof.clone();
+    // let agent2_proof = game_proof.clone();
+
+    // // Generate agent 1 proof
     let agent1_proof = client
         .prove(&keys1.0, &stdin0)
         .groth16()
@@ -377,48 +371,37 @@ where
 
     println!("Agent 2 proof generated");
 
-    // Get private key from environment
-    let private_key =
-        std::env::var("NETWORK_PRIVATE_KEY").map_err(|_| "NETWORK_PRIVATE_KEY not set")?;
-    let wallet: LocalWallet = private_key.parse().map_err(|_| "Invalid private key")?;
-    let wallet = wallet.with_chain_id(1u64); // Set appropriate chain ID
+    {
+        let private_key =
+            std::env::var("NETWORK_PRIVATE_KEY").map_err(|_| "NETWORK_PRIVATE_KEY not set")?;
+        let signer: PrivateKeySigner = private_key.parse().expect("invalid private key");
 
-    // Setup provider and contract
-    let rpc_url = std::env::var("RPC_URL").map_err(|_| "RPC_URL not set")?;
-    let provider =
-        Provider::<Http>::try_from(rpc_url.as_str()).map_err(|_| "Failed to create provider")?;
-    let client = SignerMiddleware::new(provider, wallet);
-    let client = Arc::new(client);
+        // Setup provider and contract
+        let rpc_url = std::env::var("RPC_URL").unwrap_or("https://sepolia.base.org".to_string());
+        let provider = ProviderBuilder::new()
+            .wallet(signer)
+            .connect_http(rpc_url.parse().map_err(|_e| "Failed to create provider")?);
 
-    // Get contract address from environment
-    let contract_address =
-        std::env::var("CONNECTX_GAME_ADDRESS").map_err(|_| "CONNECTX_GAME_ADDRESS not set")?;
-    let contract_address = contract_address
-        .parse::<Address>()
-        .map_err(|_| "Invalid contract address")?;
+        let contract =
+            ConnectXGame::new(Address::from_str(CONNECTX_GAME_ADDRESS).unwrap(), provider);
 
-    // Create contract instance
-    let abi: Abi =
-        from_str(CONNECTX_GAME_ABI).map_err(|e| format!("Failed to parse ABI: {}", e))?;
-    let contract = Contract::new(contract_address, abi, client.clone());
+        let call = contract.playGame(
+            FixedBytes::<32>::from_slice(&keys1.1.bytes32_raw()),
+            FixedBytes::<32>::from_slice(&keys2.1.bytes32_raw()),
+            Bytes::from(agent1_proof.bytes()),
+            Bytes::from(agent2_proof.bytes()),
+            Bytes::from(game_proof.bytes()),
+            Bytes::from(PublicState::abi_encode(&result)),
+        );
 
-    // Play game on chain
-    contract
-        .method::<_, ()>(
-            "playGame",
-            (
-                keys1.1.bytes32(),
-                keys2.1.bytes32(),
-                Bytes::from(agent1_proof.bytes()),
-                Bytes::from(agent2_proof.bytes()),
-                Bytes::from(game_proof.bytes()),
-                Bytes::from(PublicState::abi_encode(&result)),
-            ),
-        )
-        .map_err(|e| format!("Failed to create contract call: {}", e))?
-        .send()
-        .await
-        .map_err(|e| format!("Failed to play game: {}", e))?;
+        // Register agent on chain
+        call.send()
+            .await
+            .map_err(|e| format!("Failed to play game: {}", e))?
+            .get_receipt()
+            .await
+            .map_err(|e| format!("Failed to get play game receipt: {}", e))?;
+    }
 
     Ok(result)
 }

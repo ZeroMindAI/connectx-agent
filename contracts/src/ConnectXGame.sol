@@ -15,7 +15,7 @@ struct Agent {
     bytes32 vkey;
     address owner;
     string name;
-    int256 elo; // ELO rating score
+    uint256 elo; // ELO rating score
     uint256 gamesPlayed;
 }
 
@@ -77,7 +77,7 @@ contract ConnectXGame {
                 vkey: _vkey,
                 owner: msg.sender,
                 name: _name,
-                elo: int256(DEFAULT_ELO),
+                elo: DEFAULT_ELO,
                 gamesPlayed: 0
             });
             emit AgentRegistered(_vkey, msg.sender, _name);
@@ -108,9 +108,8 @@ contract ConnectXGame {
         Agent storage agent1 = agentRegistry[_agent1];
         Agent storage agent2 = agentRegistry[_agent2];
 
-        // Convert ELO scores to positive numbers for fixed point math
-        uint256 elo1 = uint256(agent1.elo >= 0 ? agent1.elo : 0);
-        uint256 elo2 = uint256(agent2.elo >= 0 ? agent2.elo : 0);
+        uint256 elo1 = agent1.elo;
+        uint256 elo2 = agent2.elo;
 
         // Calculate expected scores using fixed point math
         uint256 eloDiff1 = (elo2 > elo1) ? elo2 - elo1 : elo1 - elo2;
@@ -134,26 +133,39 @@ contract ConnectXGame {
         }
 
         // Update ELO ratings
-        int256 delta1 = int256(
-            (K_FACTOR * (actualScore1 - expectedScore1)) / SCALE
-        );
-        int256 delta2 = int256(
-            (K_FACTOR * (actualScore2 - expectedScore2)) / SCALE
-        );
+        uint256 delta1 = (K_FACTOR *
+            (
+                actualScore1 > expectedScore1
+                    ? actualScore1 - expectedScore1
+                    : expectedScore1 - actualScore1
+            )) / SCALE;
+        uint256 delta2 = (K_FACTOR *
+            (
+                actualScore2 > expectedScore2
+                    ? actualScore2 - expectedScore2
+                    : expectedScore2 - actualScore2
+            )) / SCALE;
 
-        agent1.elo += delta1;
-        agent2.elo += delta2;
+        if (actualScore1 > expectedScore1) {
+            agent1.elo = agent1.elo + delta1;
+            agent2.elo = agent2.elo > delta2 ? agent2.elo - delta2 : 0;
+        } else {
+            agent1.elo = agent1.elo > delta1 ? agent1.elo - delta1 : 0;
+            agent2.elo = agent2.elo + delta2;
+        }
 
         agent1.gamesPlayed++;
         agent2.gamesPlayed++;
 
-        emit GameResult(
-            _agent1,
-            _agent2,
-            _winner,
-            uint256(agent1.elo),
-            uint256(agent2.elo)
-        );
+        emit GameResult(_agent1, _agent2, _winner, agent1.elo, agent2.elo);
+    }
+
+    function toBytes(uint8[] memory arr) internal pure returns (bytes memory) {
+        bytes memory b = new bytes(arr.length);
+        for (uint i = 0; i < arr.length; i++) {
+            b[i] = bytes1(arr[i]);
+        }
+        return b;
     }
 
     function playGame(
@@ -186,7 +198,7 @@ contract ConnectXGame {
             _gameProof
         );
 
-        bytes memory moves = abi.encodePacked(gamePublicState.moves);
+        bytes memory moves = toBytes(gamePublicState.moves);
 
         // Verify agent1 proof
         ISP1Verifier(verifier).verifyProof(

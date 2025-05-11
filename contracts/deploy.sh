@@ -5,5 +5,5 @@ forge create src/ConnectXGame.sol:ConnectXGame \
   --broadcast \
   --verify \
   --constructor-args \
-    0xa27A057CAb1a4798c6242F6eE5b2416B7Cd45E5D \
-    0x00eb05980304df681a7d2274f55464c2d603f0e94bc546b8e542852913e88cd3
+    0x397A5f7f3dBd538f23DE225B51f532c34448dA9B \
+    0x00a6690d407dcee35e2d5620166706ffa38e8296d60e22332972e901281ee691

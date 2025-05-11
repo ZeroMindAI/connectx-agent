@@ -19,6 +19,7 @@ uuid = { version = "1.16", features = ["v4"] }
 substrate-bn = { git = "https://github.com/sp1-patches/bn", tag = "patch-0.6.0-sp1-4.0.0" }
 lazy_static = "1.5"
 rand = "0.8"
-ethers = { version = "2.0", features = ["ws", "rustls"] }
 dotenv = "0.15"
 eyre = "0.6"
+alloy = { version = "0.15.10", features = ["full"] }
+alloy-contract = "0.15.10"

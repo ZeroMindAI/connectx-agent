@@ -3,14 +3,15 @@ use std::sync::Arc;
 use game_lib::reducer::reducer;
 use game_utils::print::print_public_state;
 use sp1_sdk::{include_elf, ProverClient};
-use turbo_sp1::zeromind::{zeromind_run_agent, zeromind_submit_agent, ZeromindAgentSubmission};
+use turbo_sp1::zeromind::{zeromind_submit_agent, ZeromindAgentSubmission};
 
 /// The ELF (executable and linkable format) file for the Succinct RISC-V zkVM.
 pub const GAME_ELF: &[u8] = include_elf!("game-program");
 pub const AGENT_RANDOM_ELF: &[u8] = include_elf!("agent-random");
 pub const AGENT_MINIMAX_ELF: &[u8] = include_elf!("agent-minimax");
 
-fn main() {
+#[tokio::main]
+async fn main() {
     // ========= CONFIG YOUR AGENTS HERE =========
 
     let your_agent =
@@ -33,6 +34,7 @@ fn main() {
         your_agent,
         opponent_agent,
     )
+    .await
     .unwrap();
     print_public_state(&public_state);
 
