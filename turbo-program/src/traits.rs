@@ -6,3 +6,7 @@ pub trait TurboActionSerialization: Sized {
 pub trait HasTerminalState {
     fn is_terminal(&self) -> bool;
 }
+
+pub trait HasActions {
+    fn actions(&self) -> Vec<u8>;
+}

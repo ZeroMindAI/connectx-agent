@@ -11,7 +11,7 @@ use turbo_program::context::TurboActionContext;
 
 const ROWS: usize = 6;
 const COLS: usize = 7;
-const MAX_DEPTH: usize = 6; // adjust for stronger/slower play
+const MAX_DEPTH: usize = 4; // adjust for stronger/slower play
 
 /// Returns the column (0‑indexed) the agent chooses to drop a disc in.
 #[allow(clippy::needless_range_loop)]

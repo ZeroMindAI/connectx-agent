@@ -1,6 +1,6 @@
 use alloy_sol_types::sol;
 use serde::{Deserialize, Serialize};
-use turbo_program::traits::HasTerminalState;
+use turbo_program::traits::{HasActions, HasTerminalState};
 
 sol! {
     #[derive(Serialize, Deserialize, Debug)]
@@ -31,5 +31,11 @@ impl Default for GamePublicState {
 impl HasTerminalState for GamePublicState {
     fn is_terminal(&self) -> bool {
         self.winner != 0
+    }
+}
+
+impl HasActions for GamePublicState {
+    fn actions(&self) -> Vec<u8> {
+        self.moves.clone()
     }
 }
